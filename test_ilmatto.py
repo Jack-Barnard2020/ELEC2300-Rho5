@@ -1,45 +1,100 @@
-"""Manual board check, not an automated test. Complete ilmatto.py first."""
+"""Manual section 3.1 check script. No GUI or direct serial calls here.
 
+Run without arguments after TODO 1. Full board checks need TODOs 1-9.
+This is an interactive hardware check, not a pytest test suite.
+"""
+
+import argparse
 import time
-import serial
-from ilmatto import IlMatto
 
-PORT = "COM3"  # Change this to the cable's port in Device Manager.
+from ilmatto import IlMatto, IlMattoError
 
-board = IlMatto()
-try:
-    print("Available ports:", board.list_ports())
-    print("Connected before opening:", board.is_connected)
-    board.connect(PORT)
-    print("Connected after handshake:", board.is_connected)
-    print("Ping:", board.send_command("PING", "OK PONG RHO4/1"))
-    board.set_mode("OFF")
-    print("Measured voltage:", board.read_voltage(), "V")
 
-    # TODO: Call set_pid_gains() with your own gains tested in Rho4.
-    # Then set_voltage(1.0), set_mode('PID'), wait for your circuit to settle,
-    # and print read_voltage() plus its type. It should be a float.
-    # time.sleep() is fine in this console check; keep it out of a GUI callback.
-    # Compare the returned voltage with the actual output on your instruments.
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--port", help="Your board's port, for example COM3")
+    parser.add_argument("--voltage", type=float, default=1.0, help="Test target in V")
+    parser.add_argument("--gains", nargs=3, type=float, metavar=("KP", "KI", "KD"),
+                        help="Optional: use gains you have already checked in Rho4")
+    args = parser.parse_args()
 
-    # TODO: Try set_voltage('abc'), -0.1, 3.4, float('nan') and float('inf').
-    # Catch ValueError for EACH case so the next test still runs.
-    # Try invalid gains too. Invalid input must send nothing to the board.
-    # Send an unknown command and check that RuntimeError contains its ERR reply.
-    # In separate runs: try a missing port, then unplug during read_voltage().
-    # Check errors are reported and the port is released; reconnect before reuse.
-    # Test a missing reply with a suitable test device/fake serial connection.
-    # Confirm it raises TimeoutError rather than waiting forever.
-except (ConnectionError, TimeoutError, RuntimeError, ValueError,
-        serial.SerialException, OSError, NotImplementedError) as error:
-    print(f"{type(error).__name__}: {error}")
-finally:
     try:
-        if board.is_connected:
-            board.set_mode("OFF")
-    except (ConnectionError, TimeoutError, RuntimeError, serial.SerialException,
-            OSError, NotImplementedError) as error:
-        print("Could not confirm MODE OFF:", error)
+        print("Available ports:", IlMatto.list_ports())
+    except NotImplementedError as exc:
+        print("Skeleton checkpoint:", exc)
+        return 1
+
+    if not args.port:
+        print("Port listing finished. Complete the remaining methods before")
+        print("running: python test_ilmatto.py --port COM3")
+        return 0
+
+    board = IlMatto()
+    verified_board = False
+    failed = False
+    try:
+        assert board.is_connected() is False, "New instance should be disconnected"
+        board.connect(args.port)
+        assert board.is_connected() is True, "Port did not open"
+        reply = board.send_command("PING")
+        assert reply == "OK PONG RHO4/1", f"Unexpected handshake: {reply!r}"
+        verified_board = True
+        assert board.send_command("STREAM 0") == "OK STREAM ms=0"
+        print("Status:", board.send_command("STATUS"))
+        board.set_mode("OFF")
+
+        if args.gains:
+            board.set_pid_gains(*args.gains)
+            print("PID gains updated:", args.gains)
+        else:
+            print("Gains check skipped. Repeat with --gains KP KI KD to test it.")
+
+        print("Initial measurement:", board.read_voltage(), "V")
+        board.set_voltage(args.voltage)
+        board.set_mode("PID")
+        time.sleep(1.0)  # Bench check only: allow the output time to settle.
+        measured = board.read_voltage()
+        assert isinstance(measured, float), "read_voltage() must return a float"
+        print(f"Target: {args.voltage:.3f} V; measured: {measured:.3f} V")
+        print("Compare this reading with your meter/scope and record the result.")
+
+        # TODO 10: Add failure checks after the normal exchange works.
+        # a) set_voltage('abc'), -0.1, max_voltage + 0.1, NaN and infinity:
+        #    catch ValueError and report PASS; no serial write should occur.
+        # b) Invalid/nonfinite/out-of-range gains and an invalid mode:
+        #    expect ValueError. Confirm an invalid setting leaves STATUS unchanged.
+        # c) Send an unknown command: catch IlMattoError from the ERR reply.
+        # d) Separately try an unused port, disconnected read, unplugged cable,
+        #    and a nonresponding board. Expect a useful error and bounded wait.
+        #    Reconnect before continuing after a transport failure.
+        # e) Feed partial/malformed/READY/DATA replies using a small fake serial
+        #    object if available; confirm only a complete valid reply is accepted.
+        # Do not put intentional unplug tests in the middle of normal checks.
+
+    except (IlMattoError, ValueError, NotImplementedError, AssertionError) as exc:
+        failed = True
+        print(f"Check stopped: {type(exc).__name__}: {exc}")
     finally:
-        board.close()
-    print("Connected after closing:", board.is_connected)
+        # Attempt output stop independently from closing so a failed stop does
+        # not prevent releasing the port. The board can keep running if unplugged.
+        if verified_board:
+            try:
+                board.set_mode("OFF")
+            except (IlMattoError, NotImplementedError) as exc:
+                failed = True
+                print("Could not confirm output OFF:", exc)
+        try:
+            board.disconnect()
+            assert board.is_connected() is False
+            board.disconnect()  # Closing twice should work.
+        except (IlMattoError, NotImplementedError, AssertionError) as exc:
+            failed = True
+            print("Connection cleanup check failed:", exc)
+
+    if not failed:
+        print("Implemented normal checks passed; complete TODO 10 separately.")
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,94 +1,140 @@
-"""Rho5 section 3.1 starter. Complete the TODOs before using either GUI."""
+"""Rho5 section 3.1: complete the numbered TODOs, one method at a time.
+
+Protocol hints match the uploaded Rho4-Dac-Windows.zip, not necessarily a
+modified version on your board. Keep all serial calls inside this module.
+"""
 
 import math
 import time
+
 import serial
 from serial.tools import list_ports
 
 
+class IlMattoError(Exception):
+    """An understandable communication/board error for the GUI to display."""
+
+
 class IlMatto:
-    def __init__(self):
+    """Manage one board. The PID calculation stays on the Il Matto.
+
+    This skeleton is deliberately incomplete. Public methods below form the
+    interface that both later GUIs can use. Call them sequentially.
+    """
+
+    def __init__(self, baudrate=9600, timeout=1.0, max_voltage=3.3):
+        # Construction stores settings; it does not open a port.
+        self.baudrate = baudrate
+        self.timeout = timeout
+        self.max_voltage = max_voltage
         self._serial = None
-        self._rx = bytearray()  # Keep incomplete lines here between reads.
+        self._receive_buffer = b""
 
     @staticmethod
-    def list_ports():
-        return sorted(port.device for port in list_ports.comports())
+    def list_ports() -> list[str]:
+        """Return port names, such as ['COM3', 'COM7']; [] is also valid."""
+        # TODO 1: Call list_ports.comports().
+        # Each returned object describes one port; its .device is the name.
+        # Collect the names into a list and return it. No board connection needed.
+        raise NotImplementedError("TODO 1: list the available ports")
 
-    @property
-    def is_connected(self):
-        # This checks the local port. Only a successful command proves a reply.
-        return self._serial is not None and self._serial.is_open
+    def is_connected(self) -> bool:
+        """Return whether we have an open local serial handle.
 
-    def connect(self, port):
-        self.close()
-        try:
-            self._serial = serial.Serial(
-                port, baudrate=9600, timeout=0.1, write_timeout=1,
-                bytesize=8, parity="N", stopbits=1,
-                xonxoff=False, rtscts=False, dsrdtr=False,
-            )
-            self.send_command("PING", "OK PONG RHO4/1")
-            self.send_command("STREAM 0", "OK STREAM ms=0")
-            self.send_command("STATUS", "OK STATUS ")
-        except Exception:
-            self.close()  # Release the port if opening or the handshake fails.
-            raise
+        This alone cannot prove the cable is still plugged in; PING checks that
+        the board responds. A later read/write failure must clear the handle.
+        """
+        # TODO 2: Return False when self._serial is None.
+        # Otherwise return the handle's .is_open property.
+        raise NotImplementedError("TODO 2: check the connection state")
 
-    def close(self):
-        try:
-            if self._serial is not None:
-                self._serial.close()
-        finally:
-            self._serial = None
-            self._rx.clear()
+    def connect(self, port: str) -> None:
+        """Open the selected port using the stored settings."""
+        # TODO 3: Reject an empty port name and invalid settings with ValueError.
+        # Require a positive baudrate and finite, positive timeout/max_voltage.
+        # If already connected, raise IlMattoError with a helpful message.
+        # Construct serial.Serial(port=..., baudrate=..., timeout=...,
+        #                         write_timeout=...). Store it in self._serial.
+        # Use 8 data bits, no parity, 1 stop bit and no flow control (8N1).
+        # Start with an empty self._receive_buffer.
+        # Catch serial.SerialException/OSError, clear the handle, and raise
+        # IlMattoError explaining which port could not be opened.
+        # Do not enable PID here. The test script performs PING separately.
+        raise NotImplementedError("TODO 3: open the serial connection")
 
-    def send_command(self, command, expected_reply):
-        """Return a complete matching OK line, without CR/LF; raise on failure."""
-        if not self.is_connected:
-            raise ConnectionError("Connect to the Il Matto first.")
-        # TODO 1: Reject empty/non-ASCII commands, CR/LF and commands >63 bytes.
-        # Encode command + "\n" as ASCII and write it. Check every byte was sent.
-        # TODO 2: Use time.monotonic() to set one deadline, at least 1 s away.
-        # Read bytes into self._rx. Only parse a line once it ends in b"\n".
-        # A read can time out halfway through a line: keep those bytes.
-        # TODO 3: Decode a complete line and remove its CR/LF.
-        # Skip blank, READY and DATA lines, even after STREAM 0.
-        # Raise RuntimeError with the board's message for an ERR line.
-        # Return an OK line only if it matches expected_reply at a token boundary.
-        # An unexpected OK line should raise RuntimeError, not count as success.
-        # TODO 4: On deadline expiry, close() then raise TimeoutError.
-        # On serial.SerialException/OSError, close() then raise ConnectionError.
-        # Closing after a timeout prevents a late reply matching the next command.
-        # Do not retry automatically. Send one command and await its reply.
-        raise NotImplementedError("Complete the command/reply exchange first.")
+    def disconnect(self) -> None:
+        """Release the port; calling this twice should be harmless.
 
-    def read_voltage(self):
-        """Return the measured feedback voltage as a float, in volts."""
-        reply = self.send_command("READ", "OK READ ")
-        # TODO: From 'OK READ v=2.497', extract v and return float('2.497').
-        # Check the v field exists and math.isfinite(value) is True.
-        # Raise RuntimeError for a malformed reply; do not return a fake zero.
-        raise NotImplementedError("Parse the measured voltage from reply.")
+        Closing the PC connection does not switch off the board's controller.
+        Use set_mode('OFF') before disconnecting when an output stop is wanted.
+        """
+        # TODO 4: If a handle exists, close it.
+        # Use finally to set self._serial = None and clear the receive buffer,
+        # even if closing fails. Wrap serial/OSError failures in IlMattoError.
+        raise NotImplementedError("TODO 4: close the serial connection")
 
-    def set_voltage(self, volts):
-        """Set the target in volts. Call set_mode('PID') to enable output."""
-        # TODO: Convert volts to float; reject 'abc', NaN and infinity.
-        # Require 0 <= volts <= 3.3, matching your uploaded Config.hpp.
-        # Raise ValueError for bad input BEFORE writing anything.
-        # Send f'SET {volts:.3f}' and expect 'OK SET sp=' followed by a number.
-        # Use expected_reply='OK SET ' with send_command(). Return None.
-        raise NotImplementedError("Validate the target, then send SET.")
+    def send_command(self, command: str) -> str:
+        """Send one ASCII command; return one complete reply without CR/LF.
 
-    def set_pid_gains(self, kp, ki, kd):
-        """Update gains; the PID calculation stays on the Il Matto."""
-        # TODO: Convert all three inputs to finite floats; otherwise ValueError.
-        # Firmware limits: Kp 0..1000, Ki 0..10000, Kd 0..100.
-        # Validate ALL three before sending 'GAINS kp ki kd'. Expect 'OK GAINS'.
-        # Keep enough decimal places for small Kd; return None on success.
-        raise NotImplementedError("Validate the gains, then send GAINS.")
+        Example: 'PING' -> 'OK PONG RHO4/1'. Raise IlMattoError on failure.
+        """
+        # TODO 5a: Require an open connection. Validate the command: nonempty,
+        # ASCII, no embedded CR/LF, and at most 63 encoded bytes before newline.
+        # Invalid user arguments should raise ValueError before writing anything.
+        # Encode command + '\n' and write it; check the write sent all bytes.
+        # Never send a second command before receiving the first one's reply.
+        #
+        # TODO 5b: Read COMPLETE lines within an overall deadline, using
+        # time.monotonic() + self.timeout. A read can return b'' or a partial
+        # line. Accumulate bytes in self._receive_buffer until '\n' appears,
+        # remove that line and retain any remaining bytes for the next line.
+        # A short per-read timeout bounded by the remaining deadline prevents
+        # repeated reads from extending the overall wait indefinitely.
+        # Decode ASCII and remove CR/LF. Bound buffer size to reject bad data.
+        # Skip blank lines, startup 'READY ...' and unsolicited 'DATA ...'.
+        # Return an 'OK ...' line. Turn an 'ERR ...' line into IlMattoError.
+        # Reject unexpected/malformed replies; do not return them as success.
+        #
+        # TODO 5c: Handle timeout, unplugging, decode errors and write failures.
+        # On transport failure/timeout, clear and close the connection so a late
+        # reply cannot be mistaken for the next command's reply. Raise a helpful
+        # IlMattoError. Do not automatically resend commands after a timeout.
+        # Do not clear the input buffer before every command: it can lose data.
+        raise NotImplementedError("TODO 5: exchange a command and reply")
 
-    def set_mode(self, mode):
-        if mode not in ("OFF", "OPEN", "PID"):
-            raise ValueError("Mode must be OFF, OPEN or PID.")
-        self.send_command(f"MODE {mode}", f"OK MODE mode={mode}")
+    def read_voltage(self) -> float:
+        """Return the measured output voltage as a finite float, in volts."""
+        # TODO 6: Send READ through self.send_command().
+        # Require the reply format 'OK READ v=2.497'. Extract just the number,
+        # convert it using float(), and check math.isfinite(). Return the float.
+        # A bad format or number is an IlMattoError, not a voltage of zero.
+        raise NotImplementedError("TODO 6: read and parse the measured voltage")
+
+    def set_voltage(self, voltage: float) -> None:
+        """Set the target voltage; use set_mode('PID') to enable control."""
+        # TODO 7: Convert the input to float, with a helpful ValueError on failure.
+        # Reject NaN/infinity and values outside 0 <= value <= self.max_voltage.
+        # Format 'SET <value>' and send it through self.send_command().
+        # Require an 'OK SET sp=<number>' reply; validate the returned number.
+        # The uploaded firmware's limit is 3.3 V. Confirm your actual Config.hpp.
+        # SET alone does not enable output when the board is in OFF mode.
+        raise NotImplementedError("TODO 7: validate and send a setpoint")
+
+    def set_pid_gains(self, kp: float, ki: float, kd: float) -> None:
+        """Update the gains on the board; no Python PID loop is needed."""
+        # TODO 8: Convert all three inputs to finite numbers.
+        # Uploaded firmware limits: kp 0..1000, ki 0..10000, kd 0..100.
+        # Reject invalid inputs with ValueError before transmitting anything.
+        # Send 'GAINS <kp> <ki> <kd>'; require the exact reply 'OK GAINS'.
+        raise NotImplementedError("TODO 8: validate and send the PID gains")
+
+    def set_mode(self, mode: str) -> None:
+        """Choose OFF, OPEN or PID explicitly."""
+        # TODO 9: Normalize the string, then require OFF, OPEN or PID.
+        # Send 'MODE <mode>'; require the exact reply 'OK MODE mode=<mode>'.
+        # OPEN uses manual duty, not the voltage setpoint. For this lab use PID.
+        raise NotImplementedError("TODO 9: select the operating mode")
+
+
+# OPTIONAL TODO: Decode the binary phrase printed in section 3.1 of the handout.
+# Print the decoded result somewhere suitable after you understand the puzzle.
