@@ -230,14 +230,50 @@ class IlMatto:
         return voltage   
 
     def set_voltage(self, voltage: float) -> None:
-        """Set the target voltage; use set_mode('PID') to enable control."""
-        # TODO 7: Convert the input to float, with a helpful ValueError on failure.
-        # Reject NaN/infinity and values outside 0 <= value <= self.max_voltage.
-        # Format 'SET <value>' and send it through self.send_command().
-        # Require an 'OK SET sp=<number>' reply; validate the returned number.
-        # The uploaded firmware's limit is 3.3 V. Confirm your actual Config.hpp.
-        # SET alone does not enable output when the board is in OFF mode.
-        raise NotImplementedError("TODO 7: validate and send a setpoint")
+        """Validate and send a voltage setpoint to the board."""
+        try:
+            value = float(voltage)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Voltage must be a number.") from exc
+
+        if not math.isfinite(value):
+            raise ValueError("Voltage must be finite.")
+
+        if not 0 <= value <= self.max_voltage:
+            raise ValueError(
+                f"Voltage must be between 0 and {self.max_voltage} V."
+            )
+
+        # Send the target using three decimal places.
+        target = f"{value:.3f}"
+        reply = self.send_command(f"SET {target}")
+
+        prefix = "OK SET sp="
+
+        if not reply.startswith(prefix):
+            raise IlMattoError(
+                f"Unexpected setpoint reply: {reply!r}"
+            )
+
+        try:
+            confirmed = float(reply[len(prefix):])
+        except ValueError as exc:
+            raise IlMattoError(
+                f"Invalid setpoint acknowledgement: {reply!r}"
+            ) from exc
+
+        if not math.isfinite(confirmed):
+            raise IlMattoError("Board returned a nonfinite setpoint.")
+
+        if not math.isclose(
+            confirmed,
+            float(target),
+            rel_tol=0.0,
+            abs_tol=0.0005,
+        ):
+            raise IlMattoError(
+                f"Board confirmed {confirmed} V; requested {target} V."
+            )
 
     def set_pid_gains(self, kp: float, ki: float, kd: float) -> None:
         """Update the gains on the board; no Python PID loop is needed."""
