@@ -202,12 +202,32 @@ class IlMatto:
             ) from exc
 
     def read_voltage(self) -> float:
-        """Return the measured output voltage as a finite float, in volts."""
-        # TODO 6: Send READ through self.send_command().
-        # Require the reply format 'OK READ v=2.497'. Extract just the number,
-        # convert it using float(), and check math.isfinite(). Return the float.
-        # A bad format or number is an IlMattoError, not a voltage of zero.
-        raise NotImplementedError("TODO 6: read and parse the measured voltage")
+        """Read the measured output voltage and return it as a float."""
+        reply = self.send_command("READ")
+
+        # Expected reply example: OK READ v=2.497
+        prefix = "OK READ v="
+
+        if not reply.startswith(prefix):
+            raise IlMattoError(
+                f"Unexpected voltage reply: {reply!r}"
+            )
+
+        number = reply[len(prefix):]
+
+        try:
+            voltage = float(number)
+        except ValueError as exc:
+            raise IlMattoError(
+                f"Invalid voltage in reply: {reply!r}"
+            ) from exc
+
+        if not math.isfinite(voltage):
+            raise IlMattoError(
+                f"Voltage must be finite: {reply!r}"
+            )
+
+        return voltage   
 
     def set_voltage(self, voltage: float) -> None:
         """Set the target voltage; use set_mode('PID') to enable control."""
