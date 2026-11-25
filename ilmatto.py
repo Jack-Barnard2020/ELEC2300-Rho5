@@ -307,10 +307,22 @@ class IlMatto:
             )
 
     def set_mode(self, mode: str) -> None:
-        """Choose OFF, OPEN or PID explicitly."""
-        # TODO 9: Normalize the string, then require OFF, OPEN or PID.
-        # Send 'MODE <mode>'; require the exact reply 'OK MODE mode=<mode>'.
-        # OPEN uses manual duty, not the voltage setpoint. For this lab use PID.
-        raise NotImplementedError("TODO 9: select the operating mode")
+        """Select OFF, OPEN or PID mode."""
+        if not isinstance(mode, str):
+            raise ValueError("Mode must be a string.")
+
+        mode = mode.strip().upper()
+
+        if mode not in ("OFF", "OPEN", "PID"):
+            raise ValueError("Mode must be OFF, OPEN or PID.")
+
+        reply = self.send_command(f"MODE {mode}")
+        expected = f"OK MODE mode={mode}"
+
+        if reply != expected:
+            raise IlMattoError(
+                f"Unexpected mode reply: {reply!r}"
+            )
+
 
 
