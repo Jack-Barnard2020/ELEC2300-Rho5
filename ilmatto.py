@@ -276,12 +276,35 @@ class IlMatto:
             )
 
     def set_pid_gains(self, kp: float, ki: float, kd: float) -> None:
-        """Update the gains on the board; no Python PID loop is needed."""
-        # TODO 8: Convert all three inputs to finite numbers.
-        # Uploaded firmware limits: kp 0..1000, ki 0..10000, kd 0..100.
-        # Reject invalid inputs with ValueError before transmitting anything.
-        # Send 'GAINS <kp> <ki> <kd>'; require the exact reply 'OK GAINS'.
-        raise NotImplementedError("TODO 8: validate and send the PID gains")
+        """Validate and send PID gains to the board."""
+        try:
+            kp = float(kp)
+            ki = float(ki)
+            kd = float(kd)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("PID gains must be numbers.") from exc
+
+        # Limits defined by your uploaded Rho4 firmware.
+        for name, value, maximum in (
+            ("Kp", kp, 1000),
+            ("Ki", ki, 10000),
+            ("Kd", kd, 100),
+        ):
+            if not math.isfinite(value):
+                raise ValueError(f"{name} must be finite.")
+
+            if not 0 <= value <= maximum:
+                raise ValueError(
+                    f"{name} must be between 0 and {maximum}."
+                )
+
+        command = f"GAINS {kp:.6g} {ki:.6g} {kd:.6g}"
+        reply = self.send_command(command)
+
+        if reply != "OK GAINS":
+            raise IlMattoError(
+                f"Unexpected PID gains reply: {reply!r}"
+            )
 
     def set_mode(self, mode: str) -> None:
         """Choose OFF, OPEN or PID explicitly."""
@@ -291,5 +314,3 @@ class IlMatto:
         raise NotImplementedError("TODO 9: select the operating mode")
 
 
-# OPTIONAL TODO: Decode the binary phrase printed in section 3.1 of the handout.
-# Print the decoded result somewhere suitable after you understand the puzzle.
