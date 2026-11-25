@@ -98,15 +98,19 @@ class IlMatto:
 
 
     def disconnect(self) -> None:
-        """Release the port; calling this twice should be harmless.
+        """Close the port and clear the connection state."""
+        try:
+            if self._serial is not None:
+                self._serial.close()
 
-        Closing the PC connection does not switch off the board's controller.
-        Use set_mode('OFF') before disconnecting when an output stop is wanted.
-        """
-        # TODO 4: If a handle exists, close it.
-        # Use finally to set self._serial = None and clear the receive buffer,
-        # even if closing fails. Wrap serial/OSError failures in IlMattoError.
-        raise NotImplementedError("TODO 4: close the serial connection")
+        except (serial.SerialException, OSError) as exc:
+            raise IlMattoError(
+                f"Could not close the connection: {exc}"
+            ) from exc
+
+        finally:
+            self._serial = None
+            self._receive_buffer = b""
 
     def send_command(self, command: str) -> str:
         """Send one ASCII command; return one complete reply without CR/LF.
