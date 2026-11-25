@@ -102,7 +102,7 @@ class IlMatto:
         try:
             if self._serial is not None:
                 self._serial.close()
-
+co
         except (serial.SerialException, OSError) as exc:
             raise IlMattoError(
                 f"Could not close the connection: {exc}"
@@ -112,34 +112,80 @@ class IlMatto:
             self._serial = None
             self._receive_buffer = b""
 
-    def send_command(self, command: str) -> str:
-        """Send one ASCII command; return one complete reply without CR/LF.
+        def send_command(self, command: str) -> str:
+        """Send one ASCII command and return its complete reply."""
+        if not self.is_connected():
+            raise IlMattoError("Connect to the board first.")
 
-        Example: 'PING' -> 'OK PONG RHO4/1'. Raise IlMattoError on failure.
-        """
-        # TODO 5a: Require an open connection. Validate the command: nonempty,
-        # ASCII, no embedded CR/LF, and at most 63 encoded bytes before newline.
-        # Invalid user arguments should raise ValueError before writing anything.
-        # Encode command + '\n' and write it; check the write sent all bytes.
-        # Never send a second command before receiving the first one's reply.
-        #
-        # TODO 5b: Read COMPLETE lines within an overall deadline, using
-        # time.monotonic() + self.timeout. A read can return b'' or a partial
-        # line. Accumulate bytes in self._receive_buffer until '\n' appears,
-        # remove that line and retain any remaining bytes for the next line.
-        # A short per-read timeout bounded by the remaining deadline prevents
-        # repeated reads from extending the overall wait indefinitely.
-        # Decode ASCII and remove CR/LF. Bound buffer size to reject bad data.
-        # Skip blank lines, startup 'READY ...' and unsolicited 'DATA ...'.
-        # Return an 'OK ...' line. Turn an 'ERR ...' line into IlMattoError.
-        # Reject unexpected/malformed replies; do not return them as success.
-        #
-        # TODO 5c: Handle timeout, unplugging, decode errors and write failures.
-        # On transport failure/timeout, clear and close the connection so a late
-        # reply cannot be mistaken for the next command's reply. Raise a helpful
-        # IlMattoError. Do not automatically resend commands after a timeout.
-        # Do not clear the input buffer before every command: it can lose data.
-        raise NotImplementedError("TODO 5: exchange a command and reply")
+        # Check the command before sending anything.
+        if not isinstance(command, str) or not command.strip():
+            raise ValueError("Command must be a nonempty string.")
+
+        if "\r" in command or "\n" in command:
+            raise ValueError("Send only one command at a time.")
+
+        try:
+            encoded = command.encode("ascii")
+        except UnicodeEncodeError as exc:
+            raise ValueError("Commands must contain ASCII characters.") from exc
+
+        if len(encoded) > 63:
+            raise ValueError("Command must be at most 63 bytes long.")
+
+        deadline = time.monotonic() + self.timeout
+
+        try:
+            # The firmware expects a newline after each command.
+            message = encoded + b"\n"
+            written = self._serial.write(message)
+
+            if written != len(message):
+                raise OSError("The complete command could not be sent.")
+
+            while True:
+                remaining = deadline - time.monotonic()
+
+                if remaining <= 0:
+                    raise TimeoutError("The board did not reply in time.")
+
+                # Process a line only when its newline has arrived.
+                if b"\n" in self._receive_buffer:
+                    line, self._receive_buffer = (
+                        self._receive_buffer.split(b"\n", 1)
+                    )
+                    reply = line.decode("ascii").rstrip("\r")
+
+                    # These are not command acknowledgements.
+                    if not reply:
+                        continue
+
+                    if reply.startswith(("READY ", "DATA ")):
+                        continue
+
+                    if reply.startswith("OK "):
+                        return reply
+
+                    if reply.startswith("ERR "):
+                        raise IlMattoError(f"Board rejected command: {reply}")
+
+                    raise ValueError(f"Unexpected board reply: {reply!r}")
+
+                # Read another byte, with a bounded waiting time.
+                self._serial.timeout = min(0.05, remaining)
+                self._receive_buffer += self._serial.read(1)
+
+                if len(self._receive_buffer) > 1024:
+                    raise ValueError("Received an excessively long reply.")
+
+        except (serial.SerialException, OSError, UnicodeError, ValueError) as exc:
+            # Close after a communication failure so a late reply cannot
+            # accidentally become the reply to our next command.
+            try:
+                self.disconnect()
+            except IlMattoError:
+                pass
+
+            raise IlMattoError(f"Communication failed: {exc}") from exc
 
     def read_voltage(self) -> float:
         """Return the measured output voltage as a finite float, in volts."""
