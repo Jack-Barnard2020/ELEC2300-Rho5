@@ -102,22 +102,22 @@ class IlMatto:
         try:
             if self._serial is not None:
                 self._serial.close()
-co
+
         except (serial.SerialException, OSError) as exc:
             raise IlMattoError(
                 f"Could not close the connection: {exc}"
             ) from exc
 
         finally:
-            self._serial = None
+            self._fromserial = None
             self._receive_buffer = b""
-
-        def send_command(self, command: str) -> str:
+    
+    def send_command(self, command: str) -> str:
         """Send one ASCII command and return its complete reply."""
         if not self.is_connected():
             raise IlMattoError("Connect to the board first.")
 
-        # Check the command before sending anything.
+        # Validate the command before sending anything.
         if not isinstance(command, str) or not command.strip():
             raise ValueError("Command must be a nonempty string.")
 
@@ -127,7 +127,9 @@ co
         try:
             encoded = command.encode("ascii")
         except UnicodeEncodeError as exc:
-            raise ValueError("Commands must contain ASCII characters.") from exc
+            raise ValueError(
+                "Commands must contain ASCII characters."
+            ) from exc
 
         if len(encoded) > 63:
             raise ValueError("Command must be at most 63 bytes long.")
@@ -135,7 +137,7 @@ co
         deadline = time.monotonic() + self.timeout
 
         try:
-            # The firmware expects a newline after each command.
+            # Finish the command with the newline expected by the firmware.
             message = encoded + b"\n"
             written = self._serial.write(message)
 
@@ -148,14 +150,14 @@ co
                 if remaining <= 0:
                     raise TimeoutError("The board did not reply in time.")
 
-                # Process a line only when its newline has arrived.
+                # Process a reply only after receiving its newline.
                 if b"\n" in self._receive_buffer:
                     line, self._receive_buffer = (
                         self._receive_buffer.split(b"\n", 1)
                     )
                     reply = line.decode("ascii").rstrip("\r")
 
-                    # These are not command acknowledgements.
+                    # Ignore blank lines, startup messages and telemetry.
                     if not reply:
                         continue
 
@@ -166,26 +168,38 @@ co
                         return reply
 
                     if reply.startswith("ERR "):
-                        raise IlMattoError(f"Board rejected command: {reply}")
+                        raise IlMattoError(
+                            f"Board rejected command: {reply}"
+                        )
 
-                    raise ValueError(f"Unexpected board reply: {reply!r}")
+                    raise ValueError(
+                        f"Unexpected board reply: {reply!r}"
+                    )
 
-                # Read another byte, with a bounded waiting time.
+                # Read another byte without exceeding the overall timeout.
                 self._serial.timeout = min(0.05, remaining)
                 self._receive_buffer += self._serial.read(1)
 
                 if len(self._receive_buffer) > 1024:
-                    raise ValueError("Received an excessively long reply.")
+                    raise ValueError(
+                        "Received an excessively long reply."
+                    )
 
-        except (serial.SerialException, OSError, UnicodeError, ValueError) as exc:
-            # Close after a communication failure so a late reply cannot
-            # accidentally become the reply to our next command.
+        except (
+            serial.SerialException,
+            OSError,
+            UnicodeError,
+            ValueError,
+        ) as exc:
+            # Clear the connection after a communication failure.
             try:
                 self.disconnect()
             except IlMattoError:
                 pass
 
-            raise IlMattoError(f"Communication failed: {exc}") from exc
+            raise IlMattoError(
+                f"Communication failed: {exc}"
+            ) from exc
 
     def read_voltage(self) -> float:
         """Return the measured output voltage as a finite float, in volts."""
