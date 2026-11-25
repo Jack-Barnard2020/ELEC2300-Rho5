@@ -1,9 +1,3 @@
-"""Rho5 section 3.1: complete the numbered TODOs, one method at a time.
-
-Protocol hints match the uploaded Rho4-Dac-Windows.zip, not necessarily a
-modified version on your board. Keep all serial calls inside this module.
-"""
-
 import math
 import time
 
@@ -12,15 +6,9 @@ from serial.tools import list_ports
 
 
 class IlMattoError(Exception):
-    """An understandable communication/board error for the GUI to display."""
-
+    pass
 
 class IlMatto:
-    """Manage one board. The PID calculation stays on the Il Matto.
-
-    This skeleton is deliberately incomplete. Public methods below form the
-    interface that both later GUIs can use. Call them sequentially.
-    """
 
     def __init__(self, baudrate=9600, timeout=1.0, max_voltage=3.3):
         # Construction stores settings; it does not open a port.
@@ -33,7 +21,7 @@ class IlMatto:
     @staticmethod
     @staticmethod
     def list_ports() -> list[str]:
-        """Return the names of available serial ports."""
+        #Return the names of available serial ports
         ports = []
 
         for port in list_ports.comports():
@@ -53,7 +41,7 @@ class IlMatto:
 
 
     def connect(self, port: str) -> None:
-        """Open the selected serial port."""
+        #Open the selected serial port
         if not isinstance(port, str) or not port.strip():
             raise ValueError("Enter a valid serial port name.")
 
@@ -98,7 +86,7 @@ class IlMatto:
 
 
     def disconnect(self) -> None:
-        """Close the port and clear the connection state."""
+        #Close the port and clear the connection state
         try:
             if self._serial is not None:
                 self._serial.close()
@@ -113,7 +101,7 @@ class IlMatto:
             self._receive_buffer = b""
     
     def send_command(self, command: str) -> str:
-        """Send one ASCII command and return its complete reply."""
+        #Send one ASCII command and return its complete reply
         if not self.is_connected():
             raise IlMattoError("Connect to the board first.")
 
@@ -202,7 +190,7 @@ class IlMatto:
             ) from exc
 
     def read_voltage(self) -> float:
-        """Read the measured output voltage and return it as a float."""
+        #Read the measured output voltage and return it as a float
         reply = self.send_command("READ")
 
         # Expected reply example: OK READ v=2.497
@@ -230,7 +218,7 @@ class IlMatto:
         return voltage   
 
     def set_voltage(self, voltage: float) -> None:
-        """Validate and send a voltage setpoint to the board."""
+        #Validate and send a voltage setpoint to the board.
         try:
             value = float(voltage)
         except (TypeError, ValueError) as exc:
@@ -276,7 +264,7 @@ class IlMatto:
             )
 
     def set_pid_gains(self, kp: float, ki: float, kd: float) -> None:
-        """Validate and send PID gains to the board."""
+        #Validate and send PID gains to the board.
         try:
             kp = float(kp)
             ki = float(ki)
@@ -307,7 +295,7 @@ class IlMatto:
             )
 
     def set_mode(self, mode: str) -> None:
-        """Select OFF, OPEN or PID mode."""
+        #Select OFF, OPEN or PID mode.
         if not isinstance(mode, str):
             raise ValueError("Mode must be a string.")
 
@@ -323,6 +311,3 @@ class IlMatto:
             raise IlMattoError(
                 f"Unexpected mode reply: {reply!r}"
             )
-
-
-
