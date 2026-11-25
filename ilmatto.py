@@ -31,12 +31,15 @@ class IlMatto:
         self._receive_buffer = b""
 
     @staticmethod
+    @staticmethod
     def list_ports() -> list[str]:
-        """Return port names, such as ['COM3', 'COM7']; [] is also valid."""
-        # TODO 1: Call list_ports.comports().
-        # Each returned object describes one port; its .device is the name.
-        # Collect the names into a list and return it. No board connection needed.
-        raise NotImplementedError("TODO 1: list the available ports")
+        """Return the names of available serial ports."""
+        ports = []
+
+        for port in list_ports.comports():
+            ports.append(port.device)
+
+        return ports
 
     def is_connected(self) -> bool:
         """Return whether we have an open local serial handle.
@@ -44,23 +47,55 @@ class IlMatto:
         This alone cannot prove the cable is still plugged in; PING checks that
         the board responds. A later read/write failure must clear the handle.
         """
-        # TODO 2: Return False when self._serial is None.
-        # Otherwise return the handle's .is_open property.
-        raise NotImplementedError("TODO 2: check the connection state")
+        if self._serial is None:
+            return False
+        return self._serial.is_open
+
 
     def connect(self, port: str) -> None:
-        """Open the selected port using the stored settings."""
-        # TODO 3: Reject an empty port name and invalid settings with ValueError.
-        # Require a positive baudrate and finite, positive timeout/max_voltage.
-        # If already connected, raise IlMattoError with a helpful message.
-        # Construct serial.Serial(port=..., baudrate=..., timeout=...,
-        #                         write_timeout=...). Store it in self._serial.
-        # Use 8 data bits, no parity, 1 stop bit and no flow control (8N1).
-        # Start with an empty self._receive_buffer.
-        # Catch serial.SerialException/OSError, clear the handle, and raise
-        # IlMattoError explaining which port could not be opened.
-        # Do not enable PID here. The test script performs PING separately.
-        raise NotImplementedError("TODO 3: open the serial connection")
+        """Open the selected serial port."""
+        if not isinstance(port, str) or not port.strip():
+            raise ValueError("Enter a valid serial port name.")
+
+        if self.is_connected():
+            raise IlMattoError("Already connected. Disconnect first.")
+
+        if not isinstance(self.baudrate, int) or self.baudrate <= 0:
+            raise ValueError("Baud rate must be a positive integer.")
+
+        try:
+            timeout = float(self.timeout)
+            max_voltage = float(self.max_voltage)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Timeout and voltage limit must be numbers.") from exc
+
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("Timeout must be finite and positive.")
+
+        if not math.isfinite(max_voltage) or max_voltage <= 0:
+            raise ValueError("Voltage limit must be finite and positive.")
+
+        try:
+            self._serial = serial.Serial(
+                port=port.strip(),
+                baudrate=self.baudrate,
+                bytesize=serial.EIGHTBITS,
+                parity=serial.PARITY_NONE,
+                stopbits=serial.STOPBITS_ONE,
+                timeout=timeout,
+                write_timeout=timeout,
+                xonxoff=False,
+                rtscts=False,
+                dsrdtr=False,
+            )
+        except (serial.SerialException, OSError) as exc:
+            self._serial = None
+            raise IlMattoError(f"Could not open {port}: {exc}") from exc
+
+        self.timeout = timeout
+        self.max_voltage = max_voltage
+        self._receive_buffer = b""
+
 
     def disconnect(self) -> None:
         """Release the port; calling this twice should be harmless.
