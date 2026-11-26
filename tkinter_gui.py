@@ -346,7 +346,7 @@ class ControlPanel(tk.Tk):
         except queue.Empty:
             pass
         if self.running and not self.busy and time.monotonic() >= self.next_read:
-            self.next_read = time.monotonic() + 0.1
+            self.next_read = time.monotonic() + 0.001
             self._submit("read")
         self.after(50, self._poll_worker)
 
