@@ -39,7 +39,7 @@ board_lock = get_board_lock()
 # ------------------------------- Page setup -------------------------------
 
 st.set_page_config(page_title="ST_APP: Il Matto Control", layout="wide")
-st.title("ST_APP: Il Matto Control Panel")
+st.title("Il Matto Control Panel")
 st.caption("Rho5 | Streamlit control panel")
 
 

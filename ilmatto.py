@@ -1,9 +1,3 @@
-"""Rho5 section 3.1: complete the numbered TODOs, one method at a time.
-
-Protocol hints match the uploaded Rho4-Dac-Windows.zip, not necessarily a
-modified version on your board. Keep all serial calls inside this module.
-"""
-
 import math
 import time
 
@@ -16,12 +10,6 @@ class IlMattoError(Exception):
 
 
 class IlMatto:
-    """Manage one board. The PID calculation stays on the Il Matto.
-
-    This skeleton is deliberately incomplete. Public methods below form the
-    interface that both later GUIs can use. Call them sequentially.
-    """
-
     def __init__(self, baudrate=9600, timeout=1.0, max_voltage=3.3):
         # Construction stores settings; it does not open a port.
         self.baudrate = baudrate
@@ -323,6 +311,3 @@ class IlMatto:
             raise IlMattoError(
                 f"Unexpected mode reply: {reply!r}"
             )
-
-
-
